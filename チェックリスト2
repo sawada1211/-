@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>即実践チェックリスト作成ツール：完全版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', sans-serif; }
+        .checkbox-wrapper input:checked + div {
+            background-color: #e0f2fe;
+            border-color: #3b82f6;
+        }
+        .checkbox-wrapper input:checked + div svg {
+            display: block;
+        }
+        .category-title {
+            cursor: pointer;
+            user-select: none;
+            padding: 12px;
+            background-color: #f0f9ff;
+            border-left: 5px solid #3b82f6;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+        .category-title:hover {
+            background-color: #e0f2fe;
+        }
+        .category-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .category-content.open {
+            max-height: 5000px; /* 十分な高さを指定 */
+            transition: max-height 0.5s ease-in;
+        }
+
+        /* 印刷用スタイル */
+        @media print {
+            body { background-color: white; padding: 0; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            .shadow-lg { box-shadow: none; }
+            .max-w-4xl { max-width: 100%; }
+            
+            /* カテゴリタイトルとコンテンツの表示制御 */
+            .category-title { 
+                background-color: #f3f4f6 !important; /* 印刷時は薄いグレー */
+                border-left-color: #333 !important; 
+                padding: 5px 10px !important;
+                margin-top: 10px !important;
+                font-size: 14px !important;
+            }
+            
+            /* コンテンツは常に展開 */
+            .category-content { 
+                max-height: none !important; 
+                display: block !important;
+                padding-left: 0 !important;
+            } 
+
+            /* チェックボックスラッパーのスタイル調整 */
+            .checkbox-wrapper { 
+                page-break-inside: avoid; 
+                margin-bottom: 5px !important;
+            }
+            
+            /* 選択されていない項目を非表示にする */
+            .checkbox-wrapper:not(:has(input:checked)) {
+                display: none;
+            }
+            
+            /* 選択された項目のスタイル */
+            .checkbox-wrapper input:checked + div {
+                background-color: white !important;
+                border: 1px solid #ccc !important;
+                padding: 5px !important;
+            }
+
+            /* テキストエリアのスタイル */
+            textarea { 
+                border: none; 
+                resize: none; 
+                font-size: 12px !important;
+                overflow: hidden;
+                padding: 0 !important;
+            }
+
+            /* 何も選択されていないカテゴリを隠す（高度なCSS）:has疑似クラス対応ブラウザのみ */
+            section:not(:has(input:checked)) {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto bg-white shadow-lg rounded-xl p-6 md:p-10" id="printable-area">
+        <header class="text-center mb-8">
+            <h1 class="text-2xl md:text-3xl font-bold text-blue-800 mb-2">プロフェッショナル行動規範<br>即実践チェックリスト</h1>
+            <p class="text-gray-600 no-print">あなたの課題に合った項目を選んで（または編集して）、オリジナルのチェックシートを作成しましょう。</p>
+            <p class="text-gray-500 text-sm mt-2 print-only hidden">作成日: <span id="print-date"></span></p>
+        </header>
+
+        <div class="mb-6 flex justify-between items-center flex-wrap gap-4 sticky top-0 bg-white pt-4 pb-2 border-b z-10 shadow-sm no-print">
+            <div class="text-sm text-gray-500">
+                <span id="selected-count" class="font-bold text-blue-600 text-lg">0</span> 項目を選択中
+            </div>
+            <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-full shadow-md transition duration-300 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                PDFとして保存 / 印刷
+            </button>
+        </div>
+
+        <div id="checklist-container" class="space-y-4 mt-4">
+            <!-- JSで動的にカテゴリと項目を生成 -->
+        </div>
+
+        <footer class="mt-10 pt-6 border-t border-gray-200 text-center text-xs text-gray-400 no-print">
+            <p>© Professional Growth Manual Tool</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- 1. 全115項目のデータ定義 (初期選択なし) ---
+        const ALL_CHECKLIST_DATA = [
+            // I. 基礎姿勢とプロの心構え編
+            { title: "1. あるべき姿：プロのリスク管理", items: [
+                "焦った時こそ、意識的に動作をゆっくりにし、落ち着いた声のトーンで話したか？",
+                "指導者から指摘を受けた直後の行動で、その修正点を意識して反映させたか？",
+                "「今、何をしていいか分からない」という状況を隠さず、正直に報告・相談したか？",
+                "メモを取る姿勢や頷きで、「あなたの話を真剣に聞いている」というサインを相手に送ったか？",
+                "結果だけでなく、「なぜそう考えたか」という思考の過程を指導者に説明したか？"
+            ]},
+            { title: "2. 小さな約束：信用残高の法則", items: [
+                "集合時間の5分前には、身支度を整えて待機していたか？",
+                "「これくらいならいいか」と思わず、物品の配置や手順などの細かいルールを完璧に守ったか？",
+                "相手（指導者、患者、スタッフ）によって態度を変えず、誰に対しても同じ丁寧さで接したか？",
+                "雑務や小さな頼まれごとを、「信頼を稼ぐチャンス」と捉えて即座に引き受けたか？",
+                "今日できた「小さな約束（提出期限など）」を守った自分を、心の中で承認したか？"
+            ]},
+            { title: "3. 感謝と謙虚さ：応援される人になる戦略", items: [
+                "指導の時間をもらった際、「お忙しい中ありがとうございます」と枕詞をつけて感謝を伝えたか？",
+                "「ありがとうございました」だけでなく、「〇〇のアドバイスのおかげで助かりました」と具体的に伝えたか？",
+                "失敗した時、言い訳を飲み込み、「自分の準備不足でした」と素直に認めたか？",
+                "自分の業務がスムーズに進んだのは、周囲のサポート（環境整備など）のおかげだと認識できたか？",
+                "清掃スタッフや事務スタッフにも、自分から挨拶や会釈をしたか？"
+            ]},
+            
+            // II. 自己管理編
+            { title: "4. 比較：過去の自分を基準にする", items: [
+                "「同期より遅れている」ではなく、「先週の自分より何ができるようになったか」を確認したか？",
+                "今日の業務日誌に、1つでも「新しくできるようになったこと/知ったこと」を記録したか？",
+                "優秀な同期を見て落ち込むのではなく、「彼のどの行動を真似できるか」を1つ分析したか？",
+                "他人の進度に関係なく、自分で決めた「今日の目標」の達成に集中できたか？",
+                "失敗した時、「自分はダメだ」と感情的にならず、「手順のどこにエラーがあったか」を分析したか？"
+            ]},
+            { title: "5. 得意・不得意：戦略的な自己資源把握", items: [
+                "自分の苦手な手技や知識分野をリストアップし、今日の学習時間をそこに配分したか？",
+                "自分の得意な作業（PC入力、整理整頓など）で、チームの役に立つ行動を1つでも行ったか？",
+                "指導者に対し、「私は〇〇が苦手なので、準備を念入りに行います」と事前に自己申告できたか？",
+                "得意な人のやり方を観察し、自分の行動にそのまま取り入れてみたか？",
+                "苦手なことが少しでも改善した際、「〇〇を意識したら上手くいきました」と指導者に報告したか？"
+            ]},
+            { title: "6. メタ認知：自己修正システム", items: [
+                "業務中、「今、自分は焦っているな」と自分の感情を実況中継できたか？",
+                "ミスをして落ち込んだ後、深呼吸などをして「次のタスク」に意識を切り替えられたか？",
+                "うまくいかなかった原因を、「運」や「気分」ではなく、「準備」や「手順」の中に探したか？",
+                "指導者の厳しい言葉を、「感情的な攻撃」ではなく「具体的な行動指示」に脳内で変換したか？",
+                "「これ以上は一人では危険だ」と判断し、手遅れになる前にヘルプを呼べたか？"
+            ]},
+            { title: "7. 違和感：成長のサイン", items: [
+                "疲れを感じた時、「今日も脳が新しい回路を作っている証拠だ」とポジティブに捉え直したか？",
+                "「疲れた」という言葉を、「今日はこれだけ頑張った」という言葉に言い換えたか？",
+                "あえて自分の得意ではない業務や、新しい患者さんの担当に、自ら手を挙げたか？",
+                "作業がルーティン化して楽に感じた時、「もっと効率良い方法はないか？」と改善点を探したか？",
+                "「人間関係の悩み」と「成長のための負荷」を区別し、後者にエネルギーを注げたか？"
+            ]},
+            { title: "8. 不確実性：柔軟さの戦略", items: [
+                "正解が分からない状況でも、立ち止まらずに「現時点での最善（リスク回避）」を選んで行動したか？",
+                "「確定ではありませんが、〇〇と考えます」と、暫定的な判断を口に出して伝えたか？",
+                "報告の際、「なんとなく変です」ではなく、「普段の〇〇と比べて△△な点が異なります」と具体的に伝えたか？",
+                "完璧な準備が終わらなくても、期限や時間が来たら、70点の状態で行動に移したか？",
+                "異なる指導者から違う指示が出た時、「どちらが正しいか」ではなく「今の患者さんに合うのはどちらか」を考えたか？"
+            ]},
+            { title: "9. 8割の気合い：持続可能な努力", items: [
+                "「今日一日で結果を出そう」とせず、「明日も元気に来るために」適切なペース配分をしたか？",
+                "急な頼まれごとに対応できる「心の余裕（2割）」を残して業務をしたか？",
+                "「今のHPは残り40%」など、自分の疲労度を数値で把握し、早めの休憩を取ったか？",
+                "全てに全力投球せず、「ここは絶対に外せない」という重要ポイントに集中力を注いだか？",
+                "睡眠や食事を「明日のための仕事の一部」として管理したか？"
+            ]},
+            { title: "10. チーム貢献：投資回収の義務", items: [
+                "指導者がやろうとした雑務（片付けなど）を、「私がやります」と先に奪い取ったか？",
+                "自分が調べたことや気づいたことを、メモや口頭でチームに共有したか？",
+                "チーム内で問題が起きた時、「自分には関係ない」と思わず、自分にできることがないか探したか？",
+                "床のゴミを拾うなど、誰にでもできる環境整備で安全に貢献したか？",
+                "パソコン操作など、自分の得意分野でチームの手助けをしたか？"
+            ]},
+
+            // III. 行動と学び編
+            { title: "11. 失敗を恐れず：行動リスクの重視", items: [
+                "質問する前に、「私はこうしたいのですが」という行動プランを指導者に提示したか？",
+                "「ここまでは安全、これ以上は危険」というラインを確認し、安全圏内で積極的に動いたか？",
+                "ミスをした直後、落ち込む前に「何が原因か」をメモ帳に書き出したか？",
+                "「失敗して怒られるリスク」より、「何もせず経験を得られないリスク」を恐れて行動したか？",
+                "うまくいった時、「まぐれ」で済ませず、「なぜうまくいったか」を一つでも言語化したか？"
+            ]},
+            { title: "12. 観察→仮説→実践：思考のフレームワーク", items: [
+                "先入観を捨てて、目の前の患者さんの「今の状態」をありのままに観察したか？",
+                "何か行動する前に、「なぜなら〇〇だから」と心の中で根拠を唱えてから動いたか？",
+                "指導者に「〇〇と考えたのですが、合っていますか？」と自分の思考プロセスを確認したか？",
+                "いきなり全てを変えず、「まずは声かけだけ変えてみる」など、小さく試したか？",
+                "行動の後、「仮説通りだったか、違ったか」を必ず振り返ったか？"
+            ]},
+            { title: "13. まずは質よりも量：試行回数最大化", items: [
+                "「どうしよう」と迷う時間を減らし、まずは手を動かす（やってみる）ことを優先したか？",
+                "「失敗しても、データが取れればOK」と割り切り、数をこなすことに集中したか？",
+                "「昨日より1回多くできた」と、量の変化を成長として認めたか？",
+                "繰り返す中で、「こうすればもっと良くなるかも」という小さな気づきを見つけられたか？",
+                "数をこなして分かったコツを、「こうやるとスムーズです」と周囲に伝えたか？"
+            ]},
+            { title: "14. 記録：指導者との認識合わせ", items: [
+                "事実だけでなく、「私はこう考えた（A項目）」をしっかりと文章にしたか？",
+                "「事実→解釈→計画」の順で記載し、論理が飛躍していないか確認したか？",
+                "記録を見せながら、「ここの解釈に自信がないので見ていただけますか？」と質問できたか？",
+                "指導者の赤ペン（修正）を、次の日の記録に反映させ、「指摘を理解した」ことを示したか？",
+                "1週間前の自分の記録を読み返し、視点や考察が深まっているか確認したか？"
+            ]},
+            { title: "15. メモに時間をかけるな：思考の時間配分", items: [
+                "指導者の話を全文書き写さず、重要な単語だけをメモし、相手の顔を見て話を聞いたか？",
+                "メモした内容について、「つまり〇〇ということですか？」と、その場で理解度を確認したか？",
+                "メモの端に、「で、自分はどうする？」という具体的な行動（To Do）を書き加えたか？",
+                "メモを見返し、不要な情報を捨て、重要な知識をストックノートに転記したか？",
+                "「たくさん書いた」ことで満足せず、「本質を理解できたか」で自己評価したか？"
+            ]},
+
+            // IV. 信頼構築編
+            { title: "16. ストレス耐性：感情の境界線", items: [
+                "患者さんの怒りや悲しみを、「自分のせいだ」と抱え込まず、「症状の一部」として客観視できたか？",
+                "「自分ができるベストは尽くした」と割り切り、結果をコントロールしようとしすぎなかったか？",
+                "職場を出た瞬間、仕事のことを考えるのをやめ、プライベートの自分に戻れたか？",
+                "心が辛いと感じた時、限界が来る前に信頼できる人に「ちょっと聞いてください」と言えたか？",
+                "深呼吸や手洗いなど、自分の感情をリセットするルーティンを実行したか？"
+            ]},
+            { title: "17. 教えてあげたい存在になる：指導者の投資戦略", items: [
+                "指導されたことを、その日のうち（または次の機会）に即座に行動に移したか？",
+                "「〇〇を教えていただいたおかげで、うまくいきました」と、指導の効果を報告したか？",
+                "「前回の課題だった〇〇を、今日は意識してやりました」と、成長の跡を見せたか？",
+                "黙ってうなずくだけでなく、「私はこう思いますが、どうでしょうか」と質問して議論を深めたか？",
+                "「ここがまだ不安です」と自分の弱みを正直に見せて、助言を求めたか？"
+            ]},
+            { title: "18. 時間を奪っているという感覚を持つ：リソースの尊重", items: [
+                "質問に行く前に、自分で調べられることは全て調べたか？",
+                "「相談があります。結論から言うと～」と、用件を最初に簡潔に伝えたか？",
+                "一度聞いたことを二度聞かないよう、メモを見返してから作業に入ったか？",
+                "指導の終わりに、「お時間をいただきありがとうございました」と必ず伝えたか？",
+                "指導者が忙しそうな時は避け、手が空いた瞬間を見計らって声をかけたか？"
+            ]},
+            { title: "19. 報連相はなるべく早く：リスク管理", items: [
+                "「おかしいな」と思った瞬間、自己判断で様子を見ず、すぐに指導者に報告したか？",
+                "報告する際、「結論→状況→補足」の順で整理して話せたか？",
+                "「こんなこと報告していいかな？」と迷った時、「報告しないリスク」を考えて声を上げたか？",
+                "重大なミスだけでなく、患者さんの小さな変化や良い兆候も共有したか？",
+                "報告した後、「私はどう動けばいいですか？」と次の指示を確認したか？"
+            ]},
+            { title: "20. フィードバックを“贈り物”と捉える：成長のデータ化", items: [
+                "厳しい口調で言われても、感情を捨てて「直すべき行動は何か」だけを抽出できたか？",
+                "受けたフィードバックをノートに記録し、「いつまでに直すか」を決めたか？",
+                "指摘された点を、次の処置や動作で意識して変えようとしたか？",
+                "耳の痛い指摘をしてくれたことに対し、「気づかせてくれてありがとうございます」と言えたか？",
+                "「ご指摘いただいた点を修正してみました」と、改善後の姿を指導者に見てもらったか？"
+            ]},
+            { title: "21. 主体性と素直さの両立：成長の両輪", items: [
+                "自分の考えと違っても、まずは「はい、やってみます」と指導者のやり方を受け入れたか？",
+                "教わった通りにやるだけでなく、「もっとこうしたらどうか」と自分なりの工夫を考えたか？",
+                "知ったかぶりをせず、「ここが分かりません」と素直に聞けたか？",
+                "言われたからやるのではなく、「自分の成長のために必要だからやる」という意識で取り組んだか？",
+                "自分が工夫してうまくいったことを、「こうやったら良かったです」とチームに共有したか？"
+            ]},
+            { title: "22. 質問力を磨く：思考の可視化", items: [
+                "「どうすればいいですか？」ではなく、「私はこう思うのですが」と自分の考えを持って質問したか？",
+                "質問の場面を「〇〇さんの移乗の際の、足の位置について」など、具体的に限定したか？",
+                "指導者がYes/Noで答えられるような、質問の仕方を工夫したか？",
+                "得られた回答を知識として終わらせず、次の臨床ですぐに試したか？",
+                "自分が質問して得た有益な情報を、同期や他のスタッフにも教えたか？"
+            ]},
+            { title: "23. 患者目線を忘れない：倫理的基盤", items: [
+                "「私がリハビリをする」ではなく、「患者さんが良くなるためにサポートする」と考えられたか？",
+                "自分の説明や態度が、患者さんに不安や威圧感を与えていないか、常に自問したか？",
+                "マスク越しの笑顔、目線の高さなど、安心感を与える振る舞いができたか？",
+                "「今日は顔色が少し良いですね」など、患者さんの小さな変化に気づき、言葉にして伝えたか？",
+                "自分のやりやすさよりも、患者さんにとって苦痛が少なく、効果的な方法を優先したか？"
+            ]}
+        ];
+
+
+        // --- 2. ツール描画とロジック ---
+        
+        // 描画関数
+        function renderAllChecklists() {
+            const container = document.getElementById('checklist-container');
+            container.innerHTML = '';
+            ALL_CHECKLIST_DATA.forEach((category, catIndex) => {
+                const section = document.createElement('section');
+                section.className = "mb-4"; // セクション間のマージン
+                
+                // カテゴリタイトル（開閉トグル）
+                const title = document.createElement('h2');
+                title.className = "category-title text-base md:text-lg font-bold text-gray-700 flex justify-between items-center";
+                // 初期状態は閉じておくため、矢印は下向きなどを想定
+                title.innerHTML = `<span>${category.title} (${category.items.length}項目)</span> <span class="toggle-icon">▼</span>`;
+                title.onclick = () => toggleCategory(catIndex);
+                section.appendChild(title);
+
+                // アイテムコンテナ（初期状態は非表示）
+                const itemsDiv = document.createElement('div');
+                itemsDiv.id = `category-items-${catIndex}`;
+                itemsDiv.className = "category-content grid gap-3 px-2 pt-2"; // クラス追加
+                section.appendChild(itemsDiv);
+
+                category.items.forEach((item, itemIndex) => {
+                    const uniqueId = `item-${catIndex}-${itemIndex}`;
+                    const wrapper = document.createElement('label');
+                    wrapper.className = "checkbox-wrapper cursor-pointer block relative group";
+                    // checked 属性を削除（デフォルトでチェックなし）
+                    wrapper.innerHTML = `
+                        <input type="checkbox" id="${uniqueId}" class="absolute opacity-0 peer" onchange="updateCount()">
+                        <div class="bg-white border-2 border-gray-200 rounded-lg p-3 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition duration-200 flex items-start hover:border-blue-300">
+                            <div class="flex-shrink-0 mr-3 mt-1">
+                                <div class="w-5 h-5 border-2 border-gray-300 rounded-full flex items-center justify-center peer-checked:border-blue-500 peer-checked:bg-blue-500">
+                                    <svg class="w-3 h-3 text-white hidden pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                                </div>
+                            </div>
+                            <div class="flex-grow">
+                                <textarea class="w-full bg-transparent border-none focus:ring-0 p-0 text-gray-700 resize-none text-sm md:text-base" rows="1" oninput="autoResize(this)">${item}</textarea>
+                            </div>
+                        </div>
+                    `;
+                    itemsDiv.appendChild(wrapper);
+                });
+                container.appendChild(section);
+            });
+            updateCount();
+            // 初期表示後に高さを調整
+            setTimeout(() => document.querySelectorAll('textarea').forEach(autoResize), 0);
+            
+            // 印刷日のセット
+            const today = new Date();
+            document.getElementById('print-date').textContent = today.toLocaleDateString('ja-JP');
+        }
+        
+        // カテゴリ開閉機能
+        function toggleCategory(catIndex) {
+            const content = document.getElementById(`category-items-${catIndex}`);
+            const icon = content.previousElementSibling.querySelector('.toggle-icon');
+            
+            content.classList.toggle('open');
+            // アイコンの向きを変えるなどの処理があればここに追加
+            if(content.classList.contains('open')) {
+                 icon.textContent = '▲';
+            } else {
+                 icon.textContent = '▼';
+            }
+        }
+
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        }
+
+        function updateCount() {
+            const checkedBoxes = document.querySelectorAll('#checklist-container input[type="checkbox"]:checked');
+            document.getElementById('selected-count').innerText = checkedBoxes.length;
+        }
+
+        // 初期実行
+        renderAllChecklists();
+        
+    </script>
+</body>
+</html>
